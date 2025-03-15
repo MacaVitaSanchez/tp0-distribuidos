@@ -1,0 +1,1 @@
+go run scripts/client-generator.go -nombreArchivoSalida $1 -cantidadClientes $2
