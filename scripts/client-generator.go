@@ -6,13 +6,8 @@ import (
 	"os"
 )
 
-func main() {
-	nombreArchivoSalida := flag.String("nombreArchivoSalida", "docker-compose-dev.yaml", "Nombre del archivo de salida")
-	cantidadClientes := flag.Int("cantidadClientes", 1, "Cantidad de clientes esperada")
-
-	flag.Parse()
-
-	compose := fmt.Sprintf(`name: tp0
+func generarConfigServer(cantidadClientes int) string {
+	return fmt.Sprintf(`name: tp0
 services:
   server:
     container_name: server
@@ -23,12 +18,12 @@ services:
       - LOGGING_LEVEL=DEBUG
     networks:
       - testing_net
+`, cantidadClientes)
+}
 
-`, *cantidadClientes)
-
-	for i := 1; i <= *cantidadClientes; i++ {
-		nombreCliente := fmt.Sprintf("client%d", i)
-		compose += fmt.Sprintf(`  %s:
+func generarConfigCliente(numeroCliente int) string {
+	nombreCliente := fmt.Sprintf("client%d", numeroCliente)
+	return fmt.Sprintf(`  %s:
     container_name: %s
     image: client:latest
     entrypoint: /client
@@ -39,17 +34,40 @@ services:
       - testing_net
     depends_on:
       - server
+`, nombreCliente, nombreCliente, numeroCliente)
+}
 
-`, nombreCliente, nombreCliente, i)
+func generarConfigClientes(cantidadClientes int) string {
+	configClientes := ""
+	for i := 1; i <= cantidadClientes; i++ {
+		configClientes += generarConfigCliente(i)
 	}
+	return configClientes
+}
 
-	compose += `networks:
+func generarConfigRedes() string {
+	return `networks:
   testing_net:
     ipam:
       driver: default
       config:
         - subnet: 172.25.125.0/24
 `
+}
+
+func generarDockerCompose(cantidadClientes int) string {
+	compose := generarConfigServer(cantidadClientes)
+	compose += generarConfigClientes(cantidadClientes)
+	compose += generarConfigRedes()
+	return compose
+}
+
+func main() {
+	nombreArchivoSalida := flag.String("nombreArchivoSalida", "docker-compose-dev.yaml", "Nombre del archivo de salida")
+	cantidadClientes := flag.Int("cantidadClientes", 1, "Cantidad de clientes esperada")
+	flag.Parse()
+
+	compose := generarDockerCompose(*cantidadClientes)
 
 	err := os.WriteFile(*nombreArchivoSalida, []byte(compose), 0644)
 	if err != nil {
