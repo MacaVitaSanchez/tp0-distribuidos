@@ -18,6 +18,8 @@ services:
       - LOGGING_LEVEL=DEBUG
     networks:
       - testing_net
+    volumes:
+      - ./server/config.ini:/server/config.ini
 `, cantidadClientes)
 }
 
@@ -32,6 +34,8 @@ func generarConfigCliente(numeroCliente int) string {
       - CLI_LOG_LEVEL=DEBUG
     networks:
       - testing_net
+    volumes:
+      - ./client/config.yaml:/config.yaml
     depends_on:
       - server
 `, nombreCliente, nombreCliente, numeroCliente)
