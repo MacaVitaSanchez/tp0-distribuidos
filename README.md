@@ -200,3 +200,16 @@ Para ejecutar el script, se debe proporcionar el nombre del archivo de salida y 
 ### Consideraciones sobre el buffer del servidor  
 
 Para permitir que el servidor pueda bufferizar múltiples clientes simultáneamente, se ajusta la variable de entorno `PYTHONUNBUFFERED`, estableciéndola con el número de clientes que se desean conectar. De esta manera, los clientes que aún no estén siendo atendidos permanecerán en el buffer, evitando la pérdida de mensajes.
+
+## Ejercicio 2
+
+Para lograr que realizar cambios en el archivo de configuración no requiera reconstruír las imágenes de Docker para que los mismos sean efectivos, Se montaron volúmenes para que la información de los archivos *config.ini* y *config.yaml* pueda ser accedida por el container directamente. 
+
+
+### Ejecución  
+
+Para ejecutarlo, se debe correr el siguiente comando:
+
+```bash
+make docker-compose-up
+```
