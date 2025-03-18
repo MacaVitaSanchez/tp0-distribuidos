@@ -214,3 +214,25 @@ Para ejecutarlo, se debe correr el siguiente comando:
 ```bash
 make docker-compose-up
 ```
+
+## Ejercicio 3
+
+Para validar el funcionamiento del servidor, se diseñó un script que lanza un contenedor utilizando la imagen BusyBox que es una imagen liviana que incluye netcat. Este contenedor se encarga de enviar un mensaje al servidor y recibir la respuesta, permitiendo comprobar su comportamiento como un echo server.
+
+Se utiliza el siguiente comando para enviar un mensaje al servidor y capturar la respuesta:
+
+```bash
+$(docker run --rm --network tp0_testing_net busybox:latest sh -c "echo '$mensaje' | nc $IP_SERVER $PUERTO_SERVER")
+```
+
+- `--rm`: Elimina el contenedor al finalizar la operación.
+- `--network tp0_testing_net`: Conecta el contenedor a la red creada por docker compose donde están el cliente y el servidor.
+- `sh -c "echo '$mensaje' | nc $IP_SERVER $PUERTO_SERVER"`: Envía el mensaje al servidor usando `netcat` (`nc`).
+
+### Ejecución  
+
+Para ejecutarlo, se debe correr el siguiente comando:
+
+```bash
+./validar-echo-server.sh
+```
