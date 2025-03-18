@@ -205,6 +205,7 @@ Para permitir que el servidor pueda bufferizar múltiples clientes simultáneame
 
 Para lograr que realizar cambios en el archivo de configuración no requiera reconstruír las imágenes de Docker para que los mismos sean efectivos, Se montaron volúmenes para que la información de los archivos *config.ini* y *config.yaml* pueda ser accedida por el container directamente. 
 
+También se agregaron estos archivos en el .dockerignore, para evitar que sean incluidos en la imagen al momento de construirla con COPY. En su lugar, estos archivos son montados en el contenedor mediante docker-compose-dev.yaml en tiempo de ejecución.
 
 ### Ejecución  
 
