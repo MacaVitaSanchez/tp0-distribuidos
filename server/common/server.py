@@ -1,5 +1,6 @@
 import socket
 import logging
+import signal
 
 
 class Server:
@@ -8,6 +9,9 @@ class Server:
         self._server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self._server_socket.bind(('', port))
         self._server_socket.listen(listen_backlog)
+        self._running = True
+
+        signal.signal(signal.SIGTERM, self.shutdown)
 
     def run(self):
         """
@@ -17,12 +21,15 @@ class Server:
         communication with a client. After client with communucation
         finishes, servers starts to accept new connections again
         """
-
         # TODO: Modify this program to handle signal to graceful shutdown
         # the server
-        while True:
-            client_sock = self.__accept_new_connection()
-            self.__handle_client_connection(client_sock)
+        while self._running:
+            try:
+                client_sock = self.__accept_new_connection()
+                self.__handle_client_connection(client_sock)
+            except OSError as e:
+                break
+        
 
     def __handle_client_connection(self, client_sock):
         """
@@ -31,6 +38,7 @@ class Server:
         If a problem arises in the communication with the client, the
         client socket will also be closed
         """
+
         try:
             # TODO: Modify the receive to avoid short-reads
             msg = client_sock.recv(1024).rstrip().decode('utf-8')
@@ -56,3 +64,10 @@ class Server:
         c, addr = self._server_socket.accept()
         logging.info(f'action: accept_connections | result: success | ip: {addr[0]}')
         return c
+
+    def shutdown(self, signum, frame):
+        logging.info(f'action: shutdown_server | result: in_progress')
+        self._running = False
+        self._server_socket.close()
+        logging.info(f'action: shutdown_server | result: success')
+
