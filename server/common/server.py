@@ -66,8 +66,7 @@ class Server:
         return c
 
     def shutdown(self, signum, frame):
-        logging.info(f'action: shutdown_server | result: in_progress')
         self._running = False
         self._server_socket.close()
-        logging.info(f'action: shutdown_server | result: success')
+        logging.info(f'action: exit | result: success')
 
