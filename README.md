@@ -236,3 +236,27 @@ Para ejecutarlo, se debe correr el siguiente comando:
 ```bash
 ./validar-echo-server.sh
 ```
+
+## Ejercicio 4
+
+En este ejercicio se implementó un mecanismo que permite que los sistemas finalicen de manera graceful al recibir la señal SIGTERM. Para ello, la cátedra recomendó investigar sobre la opción -t del comando docker compose down. Luego de investigar, se comprendió que dicha opción establece un tiempo de timeout para el cierre forzado de los contenedores, enviando previamente una señal SIGTERM. Por lo tanto, el sistema dispone del tiempo especificado (en este caso, 1 segundo) para reaccionar antes de que Docker envíe una señal SIGKILL.
+
+### Lado del servidor
+Del lado del servidor, se agregó un nuevo atributo llamado running. Al recibir una señal SIGTERM, se invoca la función shutdown, que cambia el valor de running a False y cierra el socket del servidor, evitando así aceptar nuevas conexiones.
+Además, si en ese momento existiera una conexión activa con un cliente, la misma será cerrada dentro del bloque finally del método encargado de manejar conexiones, lo que garantiza que el socket del cliente también se cierre de manera controlada.
+
+### Lado del cliente
+Para permitir un cierre ordenado (graceful shutdown) del cliente al recibir una señal SIGTERM, se realizaron los siguientes cambios:
+
+- Se agregó el atributo quitChan al struct Client, que actúa como mecanismo de notificación para detener la ejecución.
+- En la función NewClient, se creó un canal de señales (sigChan) y se configuró para escuchar señales del sistema como SIGTERM.
+- Se lanzó una goroutine que espera dicha señal y, al recibirla, cierra el canal quitChan. Esto permite notificar al resto del programa que debe finalizar.
+- En el método StartClientLoop, se usaron bloques select para verificar periódicamente si quitChan fue cerrado, tanto antes de enviar un mensaje como durante el tiempo de espera entre iteraciones, permitiendo que el cliente finalice de forma inmediata y controlada si se recibe la señal.
+
+### Ejecución  
+
+Para ejecutarlo, se debe correr el siguiente comando:
+
+```bash
+make docker-compose-up
+```
