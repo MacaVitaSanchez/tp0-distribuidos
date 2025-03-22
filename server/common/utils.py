@@ -1,6 +1,8 @@
 import csv
 import datetime
 import time
+import struct
+
 
 
 """ Bets storage location. """
@@ -48,4 +50,62 @@ def load_bets() -> list[Bet]:
         reader = csv.reader(file, quoting=csv.QUOTE_MINIMAL)
         for row in reader:
             yield Bet(row[0], row[1], row[2], row[3], row[4], row[5])
+
+
+"""
+Function to write to a socket and ensure the written amount is as expected.
+Made to avoid short writes.
+"""
+def write_exact(socket, data):
+    sent_bytes = 0
+    while sent_bytes < len(data):
+        sent_bytes += socket.send(data[sent_bytes:])
+
+"""
+Function to read from a socket and ensure the read amount is as expected.
+Made to avoid short reads.
+"""
+def read_exact(socket, length):
+    data = bytearray()
+    while len(data) < length:
+        packet = socket.recv(length - len(data))
+        if not packet:
+            return None
+        data.extend(packet)
+    return data
+
+"""
+Function to deserialize a bet from a socket connection.
+Returns the deserialized bet in the form of a Bet object.
+"""
+def deserialize_bet(socket):
+    total_lenght_bytes = read_exact(socket, 2)
+    total_length = struct.unpack('>H', total_lenght_bytes)[0]
+    
+    data = read_exact(socket, total_length)
+    
+    agencia = data[0]
+    offset = 1
+    
+    nombre_len = data[offset]
+    offset += 1
+    nombre = data[offset:offset + nombre_len].decode('utf-8')
+    offset += nombre_len
+
+    apellido_len = data[offset]
+    offset += 1
+    
+    apellido = data[offset:offset + apellido_len].decode('utf-8')
+    offset += apellido_len
+        
+    documento = data[offset:offset + 8].decode('utf-8')
+    offset += 8
+        
+    nacimiento = data[offset:offset + 10].decode('utf-8')
+    offset += 10
+        
+    numero = struct.unpack('>H', data[offset:offset + 2])[0]
+    offset += 2
+        
+    return Bet(agencia, nombre, apellido, documento, nacimiento, numero)
 

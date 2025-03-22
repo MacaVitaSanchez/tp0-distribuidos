@@ -5,12 +5,14 @@ import (
 	"os"
 	"strings"
 	"time"
+	"strconv"
 
 	"github.com/op/go-logging"
 	"github.com/pkg/errors"
 	"github.com/spf13/viper"
 
 	"github.com/7574-sistemas-distribuidos/docker-compose-init/client/common"
+	"github.com/7574-sistemas-distribuidos/docker-compose-init/protocol"
 )
 
 var log = logging.MustGetLogger("log")
@@ -90,6 +92,21 @@ func PrintConfig(v *viper.Viper) {
 	)
 }
 
+func GetBet(agenciaStr string) (*protocol.Bet, error) {
+	nombre := os.Getenv("NOMBRE")
+	apellido := os.Getenv("APELLIDO")
+	documento := os.Getenv("DOCUMENTO")
+	nacimiento := os.Getenv("NACIMIENTO")
+	numeroStr := os.Getenv("NUMERO")
+
+	agencia, _ := strconv.Atoi(agenciaStr)	
+	numero, _ := strconv.Atoi(numeroStr)
+
+	bet := protocol.NewBet(agencia, nombre, apellido, documento, nacimiento, numero)
+	return bet, nil
+}
+
+
 func main() {
 	v, err := InitConfig()
 	if err != nil {
@@ -110,6 +127,11 @@ func main() {
 		LoopPeriod:    v.GetDuration("loop.period"),
 	}
 
+	bet, err := GetBet(clientConfig.ID)
+	if err != nil {
+		log.Criticalf("%s", err)
+	}
+
 	client := common.NewClient(clientConfig)
-	client.StartClientLoop()
+	client.SendBet(bet)
 }

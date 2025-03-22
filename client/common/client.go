@@ -1,8 +1,6 @@
 package common
 
 import (
-	"bufio"
-	"fmt"
 	"net"
 	"os"
 	"os/signal"
@@ -10,6 +8,8 @@ import (
 	"time"
 
 	"github.com/op/go-logging"
+	"github.com/7574-sistemas-distribuidos/docker-compose-init/protocol"
+
 )
 
 var log = logging.MustGetLogger("log")
@@ -68,48 +68,41 @@ func (c *Client) createClientSocket() error {
 }
 
 // StartClientLoop Send messages to the client until some time threshold is met
-func (c *Client) StartClientLoop() {
+func (c *Client) SendBet(bet *protocol.Bet) bool{
 	// There is an autoincremental msgID to identify every message sent
 	// Messages if the message amount threshold has not been surpassed
-	for msgID := 1; msgID <= c.config.LoopAmount; msgID++ {
-		// Create the connection the server in every loop iteration.
-		// Before sending a message, check if SIGTERM was received to exit immediately.
-		select {
+
+	message := bet.ToBytes()
+	select {
 		case <-c.quitChan:
-			return
+			return false
 		default:
 			c.createClientSocket()
-
-			// TODO: Modify the send to avoid short-write
-			fmt.Fprintf(
-				c.conn,
-				"[CLIENT %v] Message N°%v\n",
+			
+		err := writeExact(c.conn, message)
+		if err != nil {
+			log.Errorf("action: apuesta_enviada | result: fail | client_id: %v | error: %v",
 				c.config.ID,
-				msgID,
-			)
-			msg, err := bufio.NewReader(c.conn).ReadString('\n')
-			c.conn.Close()
-
-			if err != nil {
-				log.Errorf("action: receive_message | result: fail | client_id: %v | error: %v",
-					c.config.ID,
-					err,
-				)
-				return
-			}
-
-			log.Infof("action: receive_message | result: success | client_id: %v | msg: %v",
-				c.config.ID,
-				msg,
-			)
-
-		// Waits for the next message interval, but exits immediately if SIGTERM is received.
-			select {
-			case <-c.quitChan:
-				return
-			case <-time.After(c.config.LoopPeriod):
-			}
+				err)
+			return false
 		}
+		confirmation, err := readExact(c.conn, 1)
+		if err != nil {
+			log.Errorf("action: read_confirmation | result: fail | client_id: %v | error: %v",
+				c.config.ID,
+				err,
+			)
+			return false
+		}
+
+		if confirmation[0] == 1 {
+			log.Infof("action: apuesta_enviada | result: success | dni: %v | numero: %v", bet.Documento, bet.Numero)
+			return true
+		} else {
+			log.Infof("action: apuesta_enviada | result: fail | dni: %v | numero: %v", bet.Documento, bet.Numero)
+			return false
+		}	
+		c.conn.Close()
 	}
-	log.Infof("action: loop_finished | result: success | client_id: %v", c.config.ID)
+	return false
 }
