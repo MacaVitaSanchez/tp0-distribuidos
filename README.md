@@ -260,3 +260,63 @@ Para ejecutarlo, se debe correr el siguiente comando:
 ```bash
 make docker-compose-up
 ```
+
+## Ejercicio 5
+
+El objetivo principal fue implementar un protocolo de comunicación entre los clientes y el servidor, utilizando los datos de un apostador, para simular una interacción en una lotería. Se definió un formato de mensaje con la estructura de los datos que se intercambian entre los componentes.
+
+
+### Protocolo
+El primer paso fue definir el protocolo de comunicación entre el cliente y el servidor. Los datos que el cliente debe enviar al servidor están estructurados de la siguiente forma:
+
+*Largo del Payload*
+- Tamaño: 2 bytes
+- Descripción: Define el tamaño total del payload (sin contar estos 2 bytes) en el mensaje.
+
+*Id Agencia*
+- Tamaño: 1 byte
+- Descripción: Identificador único de la agencia (cliente) que realiza la apuesta.
+
+*Largo del Nombre*
+- Tamaño: 2 bytes
+- Descripción: Define el largo del nombre de la persona que realiza la apuesta.
+
+*Nombre*
+- Tamaño: Variable
+- Descripción: Contiene el nombre de la persona que realiza la apuesta.
+
+*Largo del Apellido*
+- Tamaño: 2 bytes
+- Descripción: Define el largo del apellido de la persona que realiza la apuesta.
+
+*Apellido*
+- Tamaño: Variable
+- Descripción: Contiene el apellido de la persona que realiza la apuesta.
+
+*Documento*
+- Tamaño: 8 bytes
+- Descripción: Documento de identidad (DNI o equivalente) de la persona apostante.
+
+*Nacimiento*
+- Tamaño: 10 bytes
+- Descripción: Fecha de nacimiento de la persona apostante, en formato YYYY-MM-DD.
+
+*Número Apostado*
+- Tamaño: 2 bytes
+- Descripción: El número que la persona apostó. Este campo tiene un tamaño fijo de 2 bytes, de acuerdo con el ejemplo proporcionado por la cátedra.
+
+### Implementación
+
+#### Cliente
+El cliente se encarga de construir el mensaje con los datos del apostador y enviarlo al servidor. Utiliza las variables de entorno para obtener la información necesaria para completar la apuesta. Los datos son serializados y enviados utilizando un protocolo binario.
+
+#### Servidor
+El servidor recibe el mensaje del cliente, deserializa los datos y los procesa. Después de recibir la apuesta, el servidor responde con una confirmación o error al cliente.
+
+### Ejecución  
+
+Para ejecutarlo, se debe correr el siguiente comando:
+
+```bash
+make docker-compose-up
+```
