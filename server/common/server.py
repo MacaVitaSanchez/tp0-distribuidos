@@ -43,16 +43,19 @@ class Server:
         client socket will also be closed
         """
         try:
-            bet = deserialize_bet(client_sock)
+            bets = deserialize_bet_batch(client_sock)
+            bets_quantity = len(bets)
             addr = client_sock.getpeername()
             logging.info(f'action: receive_message | result: success | ip: {addr[0]}')
-            store_bets([bet])
-            logging.info(f'action: apuesta_almacenada | result: success | dni: {bet.document} | numero: {bet.number}')
+            store_bets(bets)
+            logging.info(f'action: apuesta_recibida | result: success | cantidad: {bets_quantity}')
             confirmation = struct.pack('>B', 1)
             write_exact(client_sock, confirmation)
         except OSError as e:
             logging.error("action: receive_message | result: fail | error: {e}")
         finally:
+            confirmation = struct.pack('>B', 1)
+            write_exact(client_sock, confirmation)
             client_sock.close()
     
     def __accept_new_connection(self):
@@ -72,4 +75,4 @@ class Server:
     def shutdown(self, signum, frame):
         self._running = False
         self._server_socket.close()
-        logging.info('action: shutdown server | result: success')
+        logging.info('action: exit | result: success')

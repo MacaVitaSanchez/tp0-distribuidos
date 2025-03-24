@@ -320,3 +320,59 @@ Para ejecutarlo, se debe correr el siguiente comando:
 ```bash
 make docker-compose-up
 ```
+
+## Ejercicio 6
+
+Antes de comenzar a generar los batches, se estimó el tamaño máximo que estos podrían tener, teniendo en cuenta el campo adicional que indica la cantidad de apuestas dentro del batch, el cual ocupa 1 byte. Para ello, el enfoque estuvo en los campos de longitud variable, como los nombres y apellidos, ya que son los únicos que pueden variar en tamaño. Además, revisé que los campos de DNI y Número apostado no superaran los 8 bytes y 2 bytes respectivamente.
+
+Para determinar el tamaño de los campos variables, ejecuté los siguientes comandos en el archivo `agency-1.csv` y se repitió en el resto obteniendo los mismos resultados:
+
+```bash
+maca@consolita:~/Documentos/dataset$ awk -F, '{print length($1), $1}' agency-1.csv | sort -n -r | head -n 1
+23 Milagros De Los Angeles
+maca@consolita:~/Documentos/dataset$ awk -F, '{print length($2), $2}' agency-1.csv | sort -n -r | head -n 1
+10 Valenzuela
+maca@consolita:~/Documentos/dataset$ awk -F, '{if($3+0 > maxDNI) maxDNI=$3} END{print maxDNI}' agency-1.csv
+39999865
+maca@consolita:~/Documentos/dataset$ awk -F, '{if($5+0 > maxDNI) maxDNI=$5} END{print maxDNI}' agency-1.csv
+9999
+```
+
+De este análisis, obtenemos los siguientes valores:
+
+- El nombre más largo tiene 23 caracteres.
+- El apellido más largo tiene 10 caracteres.
+- El DNI más largo es 39999865 (8 bytes).
+- El número apostado más largo es 9999 (2 bytes).
+
+Por lo tanto, en el peor de los casos, el tamaño total de una apuesta sería:
+
+- 2 bytes para el largo del paquete.
+- 1 byte para el id de la agencia.
+- 1 byte para el largo del nombre.
+- 23 bytes para el nombre más largo.
+- 1 byte para el largo del apellido.
+- 10 bytes para el apellido más largo.
+- 8 bytes para el documento del apostador.
+- 10 bytes para la fecha de nacimiento.
+- 2 bytes para el número apostado.
+
+Esto da un total de **58 bytes por apuesta**.
+
+Con un tamaño de paquete máximo de 8000 bytes, calculamos el número máximo de apuestas que podemos incluir por batch:
+
+```
+8000 bytes / 58 bytes por apuesta = 137.93 apuestas
+```
+
+Para tener un margen adicional en futuros datasets, decidimos configurar los batches con un máximo de **135 apuestas** por batch, de esta manera tendríamos en total, en el peor de los escenarios, 7831 bytes por paquete.
+
+En cuanto a los datasets, se optó por utilizar un **bind mount** para inyectarlos, en lugar de copiarlos directamente a las imágenes. De esta manera, cada cliente tiene un archivo CSV mapeado a `/app/agency.csv` de acuerdo con su número, lo que facilita la manipulación de los datos sin necesidad de reconstruir las imágenes.
+
+### Ejecución  
+
+Para ejecutarlo, se debe correr el siguiente comando:
+
+```bash
+make docker-compose-up
+```

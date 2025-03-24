@@ -53,6 +53,15 @@ func (bet *Bet) ToBytes() []byte {
 	return message
 }
 
+func SerializeBetBatch(betBatch []*Bet) []byte {
+	serialized := []byte{byte(len(betBatch))}
+   for _, bet := range betBatch {
+		serialized = append(serialized, bet.ToBytes()...)
+   }
+
+   return serialized
+}
+
 func NewBet(agenciaId int, nombre string, apellido string, documento string, nacimiento string, numeroApostado int) *Bet {
 
 	bet := &Bet{

@@ -1,6 +1,7 @@
 import struct
 from common.utils import *
 
+BETS_QUANTITY_LENGTH = 1
 LEN_TOTAL_LENGTH = 2
 AGENCY_LENGTH = 1
 DNI_LENGTH = 8
@@ -62,3 +63,12 @@ def deserialize_bet(socket):
     numero = struct.unpack('>H', data[offset:offset + NUMBER_LENGTH])[0]
         
     return Bet(agencia, nombre, apellido, documento, nacimiento, numero)
+
+
+def deserialize_bet_batch(socket):
+    cantidad = read_exact(socket, BETS_QUANTITY_LENGTH)[0]
+    bets = []
+    for i in range(cantidad):
+        bet = deserialize_bet(socket)
+        bets.append(bet)
+    return bets

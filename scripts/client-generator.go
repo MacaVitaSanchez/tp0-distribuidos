@@ -28,18 +28,14 @@ func generarConfigCliente(numeroCliente int) string {
     entrypoint: /client
     environment:
       - CLI_ID=%d
-      - NOMBRE=Santiago Lionel
-      - APELLIDO=Lorca
-      - DOCUMENTO=30904465
-      - NACIMIENTO=1999-03-17
-      - NUMERO=7574
     networks:
       - testing_net
     volumes:
       - ./client/config.yaml:/config.yaml
+      - ./.data/agency-%d.csv:/app/agency.csv
     depends_on:
       - server
-`, nombreCliente, nombreCliente, numeroCliente)
+`, nombreCliente, nombreCliente, numeroCliente, numeroCliente)
 }
 
 func generarConfigClientes(cantidadClientes int) string {

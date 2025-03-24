@@ -15,6 +15,11 @@ import (
 	"github.com/7574-sistemas-distribuidos/docker-compose-init/protocol"
 )
 
+const (
+	PathBets = "./app/agency.csv"
+
+)
+
 var log = logging.MustGetLogger("log")
 
 // InitConfig Function that uses viper library to parse configuration parameters.
@@ -125,13 +130,10 @@ func main() {
 		ID:            v.GetString("id"),
 		LoopAmount:    v.GetInt("loop.amount"),
 		LoopPeriod:    v.GetDuration("loop.period"),
-	}
-
-	bet, err := GetBet(clientConfig.ID)
-	if err != nil {
-		log.Criticalf("%s", err)
+		BatchSize: v.GetInt("batch.maxAmount"),
 	}
 
 	client := common.NewClient(clientConfig)
-	client.SendBet(bet)
+	client.SendBet(PathBets)
+	
 }
