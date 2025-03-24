@@ -376,3 +376,23 @@ Para ejecutarlo, se debe correr el siguiente comando:
 ```bash
 make docker-compose-up
 ```
+
+## Ejercicio 7
+
+En este ejercicio, se modificó el protocolo existente para diferenciar entre dos tipos de mensajes: uno para las apuestas y otro para la solicitud de ganadores. El mensaje de solicitud de ganadores incluye el número de agencia que está solicitando los resultados.
+
+Para que el servidor pueda saber cuántas agencias participarán en el sorteo, se ajustó el generador de clientes para que configure una variable de entorno que indique la cantidad de agencias que participarán. De esta manera, el servidor puede enviar los ganadores del sorteo a cada agencia una vez que todas las agencias hayan solicitado los resultados.
+
+### Ejecución
+
+Para ejecutar el servidor con una sola agencia, se debe correr el siguiente comando:
+
+```bash
+make docker-compose-up
+```
+
+Si se desea expandir el número de agencias, primero se debe ejecutar el siguiente script, proporcionando el nombre del archivo de salida y la cantidad de agencias deseadas:
+
+```bash
+./generar-compose.sh docker-compose-dev.yaml 5
+```
