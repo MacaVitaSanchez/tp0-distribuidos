@@ -6,7 +6,7 @@ import (
 	"os"
 )
 
-func generarConfigServer() string {
+func generarConfigServer(cantidadClientes int) string {
 	return fmt.Sprintf(`name: tp0
 services:
   server:
@@ -15,9 +15,11 @@ services:
     entrypoint: python3 /main.py
     networks:
       - testing_net
+    environment:
+      - EXPECTED_CLIENTS=%d
     volumes:
       - ./server/config.ini:/server/config.ini
-`)
+`, cantidadClientes)
 }
 
 func generarConfigCliente(numeroCliente int) string {
@@ -57,7 +59,7 @@ func generarConfigRedes() string {
 }
 
 func generarDockerCompose(cantidadClientes int) string {
-	compose := generarConfigServer()
+	compose := generarConfigServer(cantidadClientes)
 	compose += generarConfigClientes(cantidadClientes)
 	compose += generarConfigRedes()
 	return compose

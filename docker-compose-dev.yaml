@@ -4,6 +4,8 @@ services:
     container_name: server
     image: server:latest
     entrypoint: python3 /main.py
+    environment:
+      - EXPECTED_CLIENTS=1
     networks:
       - testing_net
     volumes:

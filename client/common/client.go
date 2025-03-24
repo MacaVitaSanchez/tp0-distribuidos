@@ -164,8 +164,35 @@ func (c *Client) SendBet(pathBets string) bool {
     }
 	
 	time.Sleep(1 * time.Second) // sleep para que el servidor pueda imprimir todas las validaciones en el logger
-
-	log.Infof("action: exit | result: success")
-    c.conn.Close()
     return true
+}
+
+func (c *Client) GetWinners(agencia int) {
+	err := c.createClientSocket()
+
+	defer c.conn.Close()
+
+	if err != nil {
+		log.Errorf("action: connecting_server | result: fail | error %v", err)
+		return
+	}
+
+	request := RequestWinners{
+		Agency: agencia,
+	}
+
+	serializedRequest := request.ToBytes()
+	err = writeExact(c.conn, serializedRequest)
+	if err != nil {
+		log.Errorf("action: serialize_request | result: fail | error %v", err)
+		return
+	}
+
+	winners, err := DeserializeWinners(c.conn)
+	if err != nil {
+		log.Errorf("action: consulta_ganadores | result: fail | error %v", err)
+		return
+	}
+
+	log.Infof("action: consulta_ganadores | result: success | cant_ganadores: %d", len(winners.Dnis))
 }

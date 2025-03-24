@@ -135,5 +135,6 @@ func main() {
 
 	client := common.NewClient(clientConfig)
 	client.SendBet(PathBets)
-	
+	agencia, _ := strconv.Atoi(clientConfig.ID)	
+	client.GetWinners(agencia)
 }
