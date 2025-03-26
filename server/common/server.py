@@ -4,9 +4,7 @@ import signal
 from common.utils import *
 from common.socket_utils import *
 import struct
-
-
- 
+from multiprocessing import Process, Manager, Barrier
 
 BETS_MESSAGE = 1
 WINNERS_REQUEST_MESSAGE = 2
@@ -21,7 +19,14 @@ class Server:
         self._running = True
         self._expected_clients = expected_clients
         self._waiting_clients = {}
-
+        
+        # Use Manager to share state between processes
+        self.manager = Manager()
+        self._waiting_clients = self.manager.dict()
+        
+        # Barrier to synchronize clients
+        self._barrier = Barrier(expected_clients)
+        
         signal.signal(signal.SIGTERM, self.shutdown)
         
     def run(self):
@@ -37,17 +42,14 @@ class Server:
             try:
                 client_sock = self.__accept_new_connection()
                 if client_sock:
-                    message_type = self.__get_message_type(client_sock)
-                    if message_type == BETS_MESSAGE:
-                        self.__handle_bets_message(client_sock)
-                    else:
-                        self.__handle_winners_request_message(client_sock)                 
+                    # Create a new process to handle the client
+                    client_process = Process(target=self.__handle_client, args=(client_sock,))
+                    client_process.start()
             except socket.timeout:
                 continue
             except OSError:
                 break
-                return
-            
+
         logging.info("action: sorteo | result: success")
         
         try:
@@ -55,7 +57,22 @@ class Server:
         except OSError as e:
             logging.error(f"action: run_server | result: fail | error: {e}")
             return
-            
+
+    def __handle_client(self, client_sock):
+        """
+        Handle communication with the client in a separate process.
+        """
+        try:
+            message_type = self.__get_message_type(client_sock)
+            if message_type == BETS_MESSAGE:
+                self.__handle_bets_message(client_sock)
+            elif message_type == WINNERS_REQUEST_MESSAGE:
+                self.__handle_winners_request_message(client_sock)
+        except OSError as e:
+            logging.error(f"Error handling client: {e}")
+        finally:
+            client_sock.close()
+
     def __get_message_type(self, client_sock):
         return read_exact(client_sock, 1)[0]
 
@@ -81,19 +98,20 @@ class Server:
             confirmation = struct.pack('>B', 1)
             write_exact(client_sock, confirmation)
             client_sock.close()
-    
+
     def __handle_winners_request_message(self, client_sock):
         """
-        Read a byte from the socket and handle the winners request message
+        Handle winner request and add the client to the waiting list
         """
         try:
             agencia = read_exact(client_sock, 1)[0]
             self._waiting_clients[agencia] = client_sock
+            # Wait for all clients to request the winners
+            self._barrier.wait()
             return agencia
         except OSError as e:
             client_sock.close()
             raise e
-
 
     def __accept_new_connection(self):
         """
@@ -102,8 +120,6 @@ class Server:
         Function blocks until a connection to a client is made.
         Then connection created is printed and returned
         """
-
-        # Connection arrived
         logging.info('action: accept_connections | result: in_progress')
         c, addr = self._server_socket.accept()
         logging.info(f'action: accept_connections | result: success | ip: {addr[0]}')

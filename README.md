@@ -396,3 +396,26 @@ Si se desea expandir el número de agencias, primero se debe ejecutar el siguien
 ```bash
 ./generar-compose.sh docker-compose-dev.yaml 5
 ```
+
+## Ejercicio 8
+
+Para este ejercicio se modificó el servidor haciendo que maneje múltiples conexiones de clientes utilizando `multiprocessing` en lugar de `threading`, evitando las limitaciones del GIL de Python. Los clientes pueden enviar apuestas o solicitar los ganadores, pero el sorteo solo se realiza cuando todos los clientes han solicitado los ganadores.
+
+### Solución
+
+- **Multiprocessing**: Se crean procesos independientes para manejar cada cliente, mejorando el rendimiento al evitar el GIL.
+- **Sincronización con Barrier**: Los clientes deben llegar a una barrera antes de que el servidor realice el sorteo, asegurando que todos los clientes hayan solicitado los ganadores.
+
+### Ejecución
+
+Para ejecutar el servidor con una sola agencia, se debe correr el siguiente comando:
+
+```bash
+make docker-compose-up
+```
+
+Si se desea expandir el número de agencias, primero se debe ejecutar el siguiente script, proporcionando el nombre del archivo de salida y la cantidad de agencias deseadas:
+
+```bash
+./generar-compose.sh docker-compose-dev.yaml 5
+```
