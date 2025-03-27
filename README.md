@@ -400,6 +400,7 @@ Si se desea expandir el número de agencias, primero se debe ejecutar el siguien
 ## Ejercicio 8
 
 Para este ejercicio se modificó el servidor haciendo que maneje múltiples conexiones de clientes utilizando `multiprocessing` en lugar de `threading`, evitando las limitaciones del GIL de Python. Los clientes pueden enviar apuestas o solicitar los ganadores, pero el sorteo solo se realiza cuando todos los clientes han solicitado los ganadores.
+Para la solución hubo que modificar el cliente y servidor para que manejen conexiones persistentes.
 
 ### Solución
 

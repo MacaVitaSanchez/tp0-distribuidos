@@ -145,15 +145,14 @@ func (c *Client) SendBet(pathBets string) bool {
     if err != nil {
         return false
     }
-
+	c.createClientSocket()
     for _, batch := range batches {
         message := protocol.SerializeBetBatch(batch)
         select {
         case <-c.quitChan:
             return false
         default:
-            c.createClientSocket()
-
+        
             err := writeExact(c.conn, message)
             if err != nil {
                 log.Errorf("action: apuesta_enviada | result: fail | client_id: %v | error: %v",
@@ -177,29 +176,21 @@ func (c *Client) SendBet(pathBets string) bool {
                 return false
             }
         }
-		c.conn.Close()
+		
     }
-	
 	time.Sleep(1 * time.Second) // sleep para que el servidor pueda imprimir todas las validaciones en el logger
     return true
 }
 
 func (c *Client) GetWinners(agencia int) {
-	err := c.createClientSocket()
-
 	defer c.conn.Close()
-
-	if err != nil {
-		log.Errorf("action: connecting_server | result: fail | error %v", err)
-		return
-	}
 
 	request := RequestWinners{
 		Agency: agencia,
 	}
 
 	serializedRequest := request.ToBytes()
-	err = writeExact(c.conn, serializedRequest)
+	err := writeExact(c.conn, serializedRequest)
 	if err != nil {
 		log.Errorf("action: serialize_request | result: fail | error %v", err)
 		return
