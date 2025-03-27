@@ -58,16 +58,33 @@ func NewClient(config ClientConfig) *Client {
 // failure, error is printed in stdout/stderr and exit 1
 // is returned
 func (c *Client) createClientSocket() error {
-	conn, err := net.Dial("tcp", c.config.ServerAddress)
-	if err != nil {
-		log.Criticalf(
-			"action: connect | result: fail | client_id: %v | error: %v",
+    var conn net.Conn
+    var err error
+    maxRetries := 5
+    retryDelay := 2 * time.Second
+
+    for i := 0; i < maxRetries; i++ {
+        conn, err = net.Dial("tcp", c.config.ServerAddress)
+        if err == nil {
+            c.conn = conn
+            return nil
+        }
+
+        log.Infof(
+			"action: connect | result: in_progress | client_id: %v | error: %v",
 			c.config.ID,
 			err,
 		)
-	}
-	c.conn = conn
-	return nil
+
+        time.Sleep(retryDelay)
+    }
+    
+	log.Criticalf(
+		"action: connect | result: in_progress | client_id: %v | error: %v",
+		c.config.ID,
+		err,
+	)
+    return nil
 }
 
 
@@ -129,7 +146,7 @@ func (c *Client) SendBet(pathBets string) bool {
     if err != nil {
         return false
     }
-
+    
     for _, batch := range batches {
         message := protocol.SerializeBetBatch(batch)
         select {
@@ -154,18 +171,20 @@ func (c *Client) SendBet(pathBets string) bool {
                 return false
             }
 
-			if confirmation[0] == 1 {
+            if confirmation[0] == 1 {
                 log.Infof("action: apuesta_enviada | result: success | batch_size: %v", len(batch))
             } else {
                 log.Infof("action: apuesta_enviada | result: fail | batch_size: %v", len(batch))
                 return false
             }
         }
+		c.conn.Close()
     }
-	
-	time.Sleep(1 * time.Second) // sleep para que el servidor pueda imprimir todas las validaciones en el logger
+
+    time.Sleep(1 * time.Second) // sleep para que el servidor pueda imprimir todas las validaciones en el logger
     return true
 }
+
 
 func (c *Client) GetWinners(agencia int) {
 	err := c.createClientSocket()
