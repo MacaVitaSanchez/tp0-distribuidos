@@ -177,6 +177,7 @@ func (c *Client) SendBet(pathBets string) bool {
                 return false
             }
         }
+		c.conn.Close()
     }
 	
 	time.Sleep(1 * time.Second) // sleep para que el servidor pueda imprimir todas las validaciones en el logger
