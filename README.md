@@ -178,3 +178,245 @@ Se espera que se redacte una sección del README en donde se indique cómo ejecu
 Se proveen [pruebas automáticas](https://github.com/7574-sistemas-distribuidos/tp0-tests) de caja negra. Se exige que la resolución de los ejercicios pase tales pruebas, o en su defecto que las discrepancias sean justificadas y discutidas con los docentes antes del día de la entrega. El incumplimiento de las pruebas es condición de desaprobación, pero su cumplimiento no es suficiente para la aprobación. Respetar las entradas de log planteadas en los ejercicios, pues son las que se chequean en cada uno de los tests.
 
 La corrección personal tendrá en cuenta la calidad del código entregado y casos de error posibles, se manifiesten o no durante la ejecución del trabajo práctico. Se pide a los alumnos leer atentamente y **tener en cuenta** los criterios de corrección informados  [en el campus](https://campusgrado.fi.uba.ar/mod/page/view.php?id=73393).
+
+---
+
+# Resolución de ejercicios
+
+A continuación, se presenta un informe detallado sobre la ejecución de cada ejercicio desarrollado, junto con una descripción de los aspectos más relevantes de la solución implementada. Se incluyen instrucciones para su correcta ejecución, así como un análisis de los protocolos de comunicación y mecanismos de sincronización utilizados.
+
+## Ejercicio 1  
+
+Para la generación dinámica de una definición de Docker Compose con una cantidad configurable de clientes, se desarrolló un subscript en Go, el cual es invocado por el script principal `generar-compose.sh`.  
+
+### Ejecución  
+
+Para ejecutar el script, se debe proporcionar el nombre del archivo de salida y la cantidad de clientes deseados:  
+
+```bash
+./generar-compose.sh docker-compose-dev.yaml 5
+```
+
+### Consideraciones sobre el buffer del servidor  
+
+Para permitir que el servidor pueda bufferizar múltiples clientes simultáneamente, se ajusta la variable de entorno `PYTHONUNBUFFERED`, estableciéndola con el número de clientes que se desean conectar. De esta manera, los clientes que aún no estén siendo atendidos permanecerán en el buffer, evitando la pérdida de mensajes.
+
+## Ejercicio 2
+
+Para lograr que realizar cambios en el archivo de configuración no requiera reconstruír las imágenes de Docker para que los mismos sean efectivos, Se montaron volúmenes para que la información de los archivos *config.ini* y *config.yaml* pueda ser accedida por el container directamente. 
+
+También se agregaron estos archivos en el .dockerignore, para evitar que sean incluidos en la imagen al momento de construirla con COPY. En su lugar, estos archivos son montados en el contenedor mediante docker-compose-dev.yaml en tiempo de ejecución.
+
+### Ejecución  
+
+Para ejecutarlo, se debe correr el siguiente comando:
+
+```bash
+make docker-compose-up
+```
+
+## Ejercicio 3
+
+Para validar el funcionamiento del servidor, se diseñó un script que lanza un contenedor utilizando la imagen BusyBox que es una imagen liviana que incluye netcat. Este contenedor se encarga de enviar un mensaje al servidor y recibir la respuesta, permitiendo comprobar su comportamiento como un echo server.
+
+Se utiliza el siguiente comando para enviar un mensaje al servidor y capturar la respuesta:
+
+```bash
+$(docker run --rm --network tp0_testing_net busybox:latest sh -c "echo '$mensaje' | nc $IP_SERVER $PUERTO_SERVER")
+```
+
+- `--rm`: Elimina el contenedor al finalizar la operación.
+- `--network tp0_testing_net`: Conecta el contenedor a la red creada por docker compose donde están el cliente y el servidor.
+- `sh -c "echo '$mensaje' | nc $IP_SERVER $PUERTO_SERVER"`: Envía el mensaje al servidor usando `netcat` (`nc`).
+
+### Ejecución  
+
+Para ejecutarlo, se debe correr el siguiente comando:
+
+```bash
+./validar-echo-server.sh
+```
+
+## Ejercicio 4
+
+En este ejercicio se implementó un mecanismo que permite que los sistemas finalicen de manera graceful al recibir la señal SIGTERM. Para ello, la cátedra recomendó investigar sobre la opción -t del comando docker compose down. Luego de investigar, se comprendió que dicha opción establece un tiempo de timeout para el cierre forzado de los contenedores, enviando previamente una señal SIGTERM. Por lo tanto, el sistema dispone del tiempo especificado (en este caso, 1 segundo) para reaccionar antes de que Docker envíe una señal SIGKILL.
+
+### Lado del servidor
+Del lado del servidor, se agregó un nuevo atributo llamado running. Al recibir una señal SIGTERM, se invoca la función shutdown, que cambia el valor de running a False y cierra el socket del servidor, evitando así aceptar nuevas conexiones.
+Además, si en ese momento existiera una conexión activa con un cliente, la misma será cerrada dentro del bloque finally del método encargado de manejar conexiones, lo que garantiza que el socket del cliente también se cierre de manera controlada.
+
+### Lado del cliente
+Para permitir un cierre ordenado (graceful shutdown) del cliente al recibir una señal SIGTERM, se realizaron los siguientes cambios:
+
+- Se agregó el atributo quitChan al struct Client, que actúa como mecanismo de notificación para detener la ejecución.
+- En la función NewClient, se creó un canal de señales (sigChan) y se configuró para escuchar señales del sistema como SIGTERM.
+- Se lanzó una goroutine que espera dicha señal y, al recibirla, cierra el canal quitChan. Esto permite notificar al resto del programa que debe finalizar.
+- En el método StartClientLoop, se usaron bloques select para verificar periódicamente si quitChan fue cerrado, tanto antes de enviar un mensaje como durante el tiempo de espera entre iteraciones, permitiendo que el cliente finalice de forma inmediata y controlada si se recibe la señal.
+
+### Ejecución  
+
+Para ejecutarlo, se debe correr el siguiente comando:
+
+```bash
+make docker-compose-up
+```
+
+## Ejercicio 5
+
+El objetivo principal fue implementar un protocolo de comunicación entre los clientes y el servidor, utilizando los datos de un apostador, para simular una interacción en una lotería. Se definió un formato de mensaje con la estructura de los datos que se intercambian entre los componentes.
+
+
+### Protocolo
+El primer paso fue definir el protocolo de comunicación entre el cliente y el servidor. Los datos que el cliente debe enviar al servidor están estructurados de la siguiente forma:
+
+*Largo del Payload*
+- Tamaño: 2 bytes
+- Descripción: Define el tamaño total del payload (sin contar estos 2 bytes) en el mensaje.
+
+*Id Agencia*
+- Tamaño: 1 byte
+- Descripción: Identificador único de la agencia (cliente) que realiza la apuesta.
+
+*Largo del Nombre*
+- Tamaño: 2 bytes
+- Descripción: Define el largo del nombre de la persona que realiza la apuesta.
+
+*Nombre*
+- Tamaño: Variable
+- Descripción: Contiene el nombre de la persona que realiza la apuesta.
+
+*Largo del Apellido*
+- Tamaño: 2 bytes
+- Descripción: Define el largo del apellido de la persona que realiza la apuesta.
+
+*Apellido*
+- Tamaño: Variable
+- Descripción: Contiene el apellido de la persona que realiza la apuesta.
+
+*Documento*
+- Tamaño: 8 bytes
+- Descripción: Documento de identidad (DNI o equivalente) de la persona apostante.
+
+*Nacimiento*
+- Tamaño: 10 bytes
+- Descripción: Fecha de nacimiento de la persona apostante, en formato YYYY-MM-DD.
+
+*Número Apostado*
+- Tamaño: 2 bytes
+- Descripción: El número que la persona apostó. Este campo tiene un tamaño fijo de 2 bytes, de acuerdo con el ejemplo proporcionado por la cátedra.
+
+### Implementación
+
+#### Cliente
+El cliente se encarga de construir el mensaje con los datos del apostador y enviarlo al servidor. Utiliza las variables de entorno para obtener la información necesaria para completar la apuesta. Los datos son serializados y enviados utilizando un protocolo binario.
+
+#### Servidor
+El servidor recibe el mensaje del cliente, deserializa los datos y los procesa. Después de recibir la apuesta, el servidor responde con una confirmación o error al cliente.
+
+### Ejecución  
+
+Para ejecutarlo, se debe correr el siguiente comando:
+
+```bash
+make docker-compose-up
+```
+
+## Ejercicio 6
+
+Antes de comenzar a generar los batches, se estimó el tamaño máximo que estos podrían tener, teniendo en cuenta el campo adicional que indica la cantidad de apuestas dentro del batch, el cual ocupa 1 byte. Para ello, el enfoque estuvo en los campos de longitud variable, como los nombres y apellidos, ya que son los únicos que pueden variar en tamaño. Además, revisé que los campos de DNI y Número apostado no superaran los 8 bytes y 2 bytes respectivamente.
+
+Para determinar el tamaño de los campos variables, ejecuté los siguientes comandos en el archivo `agency-1.csv` y se repitió en el resto obteniendo los mismos resultados:
+
+```bash
+maca@consolita:~/Documentos/dataset$ awk -F, '{print length($1), $1}' agency-1.csv | sort -n -r | head -n 1
+23 Milagros De Los Angeles
+maca@consolita:~/Documentos/dataset$ awk -F, '{print length($2), $2}' agency-1.csv | sort -n -r | head -n 1
+10 Valenzuela
+maca@consolita:~/Documentos/dataset$ awk -F, '{if($3+0 > maxDNI) maxDNI=$3} END{print maxDNI}' agency-1.csv
+39999865
+maca@consolita:~/Documentos/dataset$ awk -F, '{if($5+0 > maxDNI) maxDNI=$5} END{print maxDNI}' agency-1.csv
+9999
+```
+
+De este análisis, obtenemos los siguientes valores:
+
+- El nombre más largo tiene 23 caracteres.
+- El apellido más largo tiene 10 caracteres.
+- El DNI más largo es 39999865 (8 bytes).
+- El número apostado más largo es 9999 (2 bytes).
+
+Por lo tanto, en el peor de los casos, el tamaño total de una apuesta sería:
+
+- 2 bytes para el largo del paquete.
+- 1 byte para el id de la agencia.
+- 1 byte para el largo del nombre.
+- 23 bytes para el nombre más largo.
+- 1 byte para el largo del apellido.
+- 10 bytes para el apellido más largo.
+- 8 bytes para el documento del apostador.
+- 10 bytes para la fecha de nacimiento.
+- 2 bytes para el número apostado.
+
+Esto da un total de **58 bytes por apuesta**.
+
+Con un tamaño de paquete máximo de 8000 bytes, calculamos el número máximo de apuestas que podemos incluir por batch:
+
+```
+8000 bytes / 58 bytes por apuesta = 137.93 apuestas
+```
+
+Para tener un margen adicional en futuros datasets, decidimos configurar los batches con un máximo de **135 apuestas** por batch, de esta manera tendríamos en total, en el peor de los escenarios, 7831 bytes por paquete.
+
+En cuanto a los datasets, se optó por utilizar un **bind mount** para inyectarlos, en lugar de copiarlos directamente a las imágenes. De esta manera, cada cliente tiene un archivo CSV mapeado a `/app/agency.csv` de acuerdo con su número, lo que facilita la manipulación de los datos sin necesidad de reconstruir las imágenes.
+
+### Ejecución  
+
+Para ejecutarlo, se debe correr el siguiente comando:
+
+```bash
+make docker-compose-up
+```
+
+## Ejercicio 7
+
+En este ejercicio, se modificó el protocolo existente para diferenciar entre dos tipos de mensajes: uno para las apuestas y otro para la solicitud de ganadores. El mensaje de solicitud de ganadores incluye el número de agencia que está solicitando los resultados.
+
+Para que el servidor pueda saber cuántas agencias participarán en el sorteo, se ajustó el generador de clientes para que configure una variable de entorno que indique la cantidad de agencias que participarán. De esta manera, el servidor puede enviar los ganadores del sorteo a cada agencia una vez que todas las agencias hayan solicitado los resultados.
+
+### Ejecución
+
+Para ejecutar el servidor con una sola agencia, se debe correr el siguiente comando:
+
+```bash
+make docker-compose-up
+```
+
+Si se desea expandir el número de agencias, primero se debe ejecutar el siguiente script, proporcionando el nombre del archivo de salida y la cantidad de agencias deseadas:
+
+```bash
+./generar-compose.sh docker-compose-dev.yaml 5
+```
+
+## Ejercicio 8
+
+Para este ejercicio se modificó el servidor haciendo que maneje múltiples conexiones de clientes utilizando `multiprocessing` en lugar de `threading`, evitando las limitaciones del GIL de Python. Los clientes pueden enviar apuestas o solicitar los ganadores, pero el sorteo solo se realiza cuando todos los clientes han solicitado los ganadores.
+Para la solución hubo que modificar el cliente y servidor para que manejen conexiones persistentes.
+
+### Solución
+
+- **Multiprocessing**: Se crean procesos independientes para manejar cada cliente, mejorando el rendimiento al evitar el GIL.
+- **Sincronización con Barrier**: Los clientes deben llegar a una barrera antes de que el servidor realice el sorteo, asegurando que todos los clientes hayan solicitado los ganadores.
+
+### Ejecución
+
+Para ejecutar el servidor con una sola agencia, se debe correr el siguiente comando:
+
+```bash
+make docker-compose-up
+```
+
+Si se desea expandir el número de agencias, primero se debe ejecutar el siguiente script, proporcionando el nombre del archivo de salida y la cantidad de agencias deseadas:
+
+```bash
+./generar-compose.sh docker-compose-dev.yaml 5
+```
