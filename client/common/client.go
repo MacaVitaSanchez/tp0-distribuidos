@@ -176,12 +176,13 @@ func (c *Client) SendBet(pathBets string) bool {
                 log.Infof("action: apuesta_enviada | result: fail | batch_size: %v", len(batch))
                 return false
             }
+
+			c.conn.Close()
         }
     }
 	
 	time.Sleep(1 * time.Second) // sleep para que el servidor pueda imprimir todas las validaciones en el logger
 
 	log.Infof("action: exit | result: success")
-    c.conn.Close()
     return true
 }
