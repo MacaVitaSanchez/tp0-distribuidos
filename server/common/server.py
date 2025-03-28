@@ -4,7 +4,7 @@ import signal
 from common.utils import *
 from common.socket_utils import *
 import struct
-from multiprocessing import Process, Manager, Barrier
+from multiprocessing import Process, Manager, Barrier, Lock
 
 
 BETS_MESSAGE = 1
@@ -27,6 +27,8 @@ class Server:
 
         # Barrier to synchronize clients
         self._barrier = Barrier(expected_clients)
+        self._lock = Lock()
+
 
         signal.signal(signal.SIGTERM, self.shutdown)
 
@@ -95,7 +97,7 @@ class Server:
             bets_quantity = len(bets)
             addr = client_sock.getpeername()
             logging.info(f'action: receive_message | result: success | ip: {addr[0]}')
-            store_bets(bets)
+            self.__store_bets_secure(bets, self._lock)
             logging.info(f'action: apuesta_recibida | result: success | cantidad: {bets_quantity}')
             confirmation = struct.pack('>B', 1)
             write_exact(client_sock, confirmation)
@@ -112,6 +114,10 @@ class Server:
             return agency
         except OSError as e:
             raise e
+
+    def __store_bets_secure(self, bets, lock):
+        with lock:
+            store_bets(bets)
 
     def __accept_new_connection(self):
         """
