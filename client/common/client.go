@@ -47,13 +47,19 @@ func NewClient(config ClientConfig) *Client {
 	// Goroutine to listen for SIGTERM and close quitChan
 	go func() {
 		<-sigChan
+		log.Infof("action: graceful_shutdown | result: in_progress | client_id: %v", config.ID)
+		
+		if client.conn != nil {
+			client.conn.Close()
+		}
+		
 		close(client.quitChan)
+		
 		log.Infof("action: exit | result: success")
 	}()
 
 	return client
 }
-
 // CreateClientSocket initializes the client socket. In case of failure,
 // it retries a number of times before returning an error.
 func (c *Client) createClientSocket() error {
@@ -140,12 +146,40 @@ func (c *Client) CreateBetsFromCSV(pathBets string, agencia int) ([][]*protocol.
 
 // StartClientLoop Send messages to the client until some time threshold is met
 func (c *Client) SendBet(pathBets string) bool {
+    select {
+    case <-c.quitChan:
+        return false
+    default:
+    }
+    
     agenciaID, _ := strconv.Atoi(c.config.ID)
     batches, err := c.CreateBetsFromCSV(pathBets, agenciaID)
     if err != nil {
         return false
     }
-	c.createClientSocket()
+    
+    err = c.createClientSocket()
+    if err != nil {
+        log.Errorf("action: send_bet | result: fail | client_id: %v | error: no se pudo conectar al servidor", c.config.ID)
+        return false
+    }
+    
+    c.conn.SetDeadline(time.Now().Add(10 * time.Second))
+    
+    done := make(chan struct{})
+    go func() {
+        select {
+        case <-c.quitChan:
+            c.conn.Close()
+        case <-done:
+        }
+    }()
+    
+    defer func() {
+        c.conn.Close()
+        close(done)
+    }()
+    
     for _, batch := range batches {
         message := protocol.SerializeBetBatch(batch)
         select {
@@ -153,54 +187,80 @@ func (c *Client) SendBet(pathBets string) bool {
             return false
         default:
         
-            err := writeExact(c.conn, message)
-            if err != nil {
+        err := writeExact(c.conn, message)
+        if err != nil {
                 log.Errorf("action: apuesta_enviada | result: fail | client_id: %v | error: %v",
                     c.config.ID,
                     err)
-                return false
-            }
+            return false
+        }
 
-            confirmation, err := readExact(c.conn, 1)
-            if err != nil {
+        confirmation, err := readExact(c.conn, 1)
+        if err != nil {
                 log.Errorf("action: read_confirmation | result: fail | client_id: %v | error: %v",
                     c.config.ID,
                     err)
-                return false
-            }
-
-			if confirmation[0] == 1 {
-                log.Infof("action: apuesta_enviada | result: success | batch_size: %v", len(batch))
-            } else {
-                log.Infof("action: apuesta_enviada | result: fail | batch_size: %v", len(batch))
-                return false
-            }
+            return false
         }
-		
+
+        if confirmation[0] == 1 {
+                log.Infof("action: apuesta_enviada | result: success | batch_size: %v", len(batch))
+        } else {
+                log.Infof("action: apuesta_enviada | result: fail | batch_size: %v", len(batch))
+            return false
+        }
     }
-	time.Sleep(1 * time.Second) // sleep para que el servidor pueda imprimir todas las validaciones en el logger
+    
+    }
+    time.Sleep(1 * time.Second) // sleep para que el servidor pueda imprimir todas las validaciones en el logger
     return true
 }
 
 func (c *Client) GetWinners(agencia int) {
-	defer c.conn.Close()
+	select {
+	case <-c.quitChan:
+		return
+	default:
+	}
+
+	err := c.createClientSocket()
+	if err != nil {
+		log.Errorf("action: consulta_ganadores | result: fail | client_id: %v | error: no se pudo conectar al servidor", c.config.ID)
+		return
+	}
+	
+	c.conn.SetDeadline(time.Now().Add(5 * time.Second))
+	
+	done := make(chan struct{})
+	go func() {
+		select {
+		case <-c.quitChan:
+			c.conn.Close()
+		case <-done:
+		}
+	}()
+	
+	defer func() {
+		c.conn.Close()
+		close(done)
+	}()
 
 	request := RequestWinners{
 		Agency: agencia,
 	}
 
 	serializedRequest := request.ToBytes()
-	err := writeExact(c.conn, serializedRequest)
-	if err != nil {
-		log.Errorf("action: serialize_request | result: fail | error %v", err)
+	if err := writeExact(c.conn, serializedRequest); err != nil {
+		log.Errorf("action: serialize_request | result: fail | client_id: %v | error %v", c.config.ID, err)
 		return
 	}
 
 	winners, err := DeserializeWinners(c.conn)
 	if err != nil {
-		log.Errorf("action: consulta_ganadores | result: fail | error %v", err)
+		log.Errorf("action: consulta_ganadores | result: fail | client_id: %v | error %v", c.config.ID, err)
 		return
 	}
 
-	log.Infof("action: consulta_ganadores | result: success | cant_ganadores: %d", len(winners.Dnis))
+	log.Infof("action: consulta_ganadores | result: success | client_id: %v | cant_ganadores: %d", c.config.ID, len(winners.Dnis))
 }
+

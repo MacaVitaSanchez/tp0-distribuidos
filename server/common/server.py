@@ -1,6 +1,7 @@
 import socket
 import logging
 import signal
+import time
 from common.utils import *
 from common.socket_utils import *
 import struct
@@ -19,11 +20,11 @@ class Server:
         self._server_socket.settimeout(1)
         self._running = True
         self._expected_clients = expected_clients
-        self._waiting_clients = {}
-
+        
         # Use Manager to share state between processes
         self.manager = Manager()
         self._waiting_clients = self.manager.dict()
+        self._shutdown_event = self.manager.Event()  # Event para señalizar shutdown a todos los procesos
 
         # Barrier to synchronize clients
         self._barrier = Barrier(expected_clients)
@@ -50,16 +51,23 @@ class Server:
                 continue
             except OSError:
                 break
+            
+            # Verifica si hay señal de shutdown para salir del bucle
+            if self._shutdown_event.is_set():
+                break
 
-        logging.info("action: sorteo | result: success")
-        
-        for process in self._client_processes:
-            process.join()
+        if not self._shutdown_event.is_set():
+            logging.info("action: sorteo | result: success")
+            
+            for process in self._client_processes:
+                process.join()
 
-        try:
-            self.__send_winners()
-        except OSError as e:
-            logging.error(f"action: run_server | result: fail | error: {e}")
+            try:
+                self.__send_winners()
+            except OSError as e:
+                logging.error(f"action: run_server | result: fail | error: {e}")
+        else:
+            logging.info("action: run_interrupted | result: success")
 
     def __handle_client(self, client_sock):
         keep_open = False
@@ -73,17 +81,28 @@ class Server:
                 if message_type == BETS_MESSAGE:
                     self.__handle_bets_message(client_sock)
                 elif message_type == WINNERS_REQUEST_MESSAGE:
-                    self.__handle_winners_request_message(client_sock)
+                    agency = self.__handle_winners_request_message(client_sock)
                     keep_open = True
-                    self._barrier.wait()
+                    
+                    if self._shutdown_event.is_set():
+                        break
+                    
+                    try:
+                        # Durante un shutdown, usamos un timeout pequeño para liberar los procesos
+                        timeout = 0.1 if self._shutdown_event.is_set() else None
+                        self._barrier.wait(timeout=timeout)
+                    except Exception as e:
+                        if not self._shutdown_event.is_set():
+                            logging.error(f"action: barrier_wait | result: fail | error: {e}")
                     break
                 else:
                     logging.warning("action: unknown_message_type")
                     break
         except Exception as e:
-            logging.error(f"action: handle_client | result: fail | error: {e}")
+            if not self._shutdown_event.is_set():
+                logging.error(f"action: handle_client | result: fail | error: {e}")
         finally:
-            if not keep_open:
+            if not keep_open or self._shutdown_event.is_set():
                 client_sock.close()
 
     def __handle_bets_message(self, client_sock):
@@ -127,26 +146,46 @@ class Server:
             if has_won(bet):
                 winners[bet.agency].append(bet)
         for agency, socket in self._waiting_clients.items():
-            self.__send_winners_to_agency(socket, winners[agency])
+            if not self._shutdown_event.is_set():
+                self.__send_winners_to_agency(socket, winners[agency])
 
     def __send_winners_to_agency(self, agency_socket, bets):
-        length = len(bets)
-        agency_socket.send(struct.pack('>H', length))
+        try:
+            length = len(bets)
+            agency_socket.send(struct.pack('>H', length))
 
-        for bet in bets:
-            document = bet.document.encode('utf8')
-            write_exact(agency_socket, document)
-
-        agency_socket.close()
+            for bet in bets:
+                document = bet.document.encode('utf8')
+                write_exact(agency_socket, document)
+        except Exception as e:
+            logging.error(f"action: send_winners | result: fail | error: {e}")
+        finally:
+            agency_socket.close()
 
     def shutdown(self, signum, frame):
         logging.info("action: shutdown | result: in_progress")
-
+        
+        self._shutdown_event.set()
         self._running = False
-
+        
+        start_time = time.time()
+        shutdown_timeout = 1.0
+        
+        try:
+            self._barrier.abort()
+            logging.info("action: barrier_abort | result: success")
+        except Exception as e:
+            logging.error(f"action: barrier_abort | result: fail | error: {e}")
+        
         for process in self._client_processes:
-            process.join()
-
-        self._server_socket.close()
+            remaining_time = max(0, shutdown_timeout - (time.time() - start_time))
+            process.join(timeout=remaining_time)
+            if process.is_alive() and time.time() - start_time >= shutdown_timeout:
+                process.terminate()
+        
+        try:
+            self._server_socket.close()
+        except Exception as e:
+            logging.error(f"action: close_server_socket | result: fail | error: {e}")
 
         logging.info('action: exit | result: success')
