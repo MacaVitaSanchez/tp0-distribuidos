@@ -4,7 +4,7 @@ import signal
 from common.utils import *
 from common.socket_utils import *
 import struct
-from multiprocessing import Process, Manager, Barrier, Lock
+from multiprocessing import Process, Manager, Barrier, Lock, Event
 
 
 BETS_MESSAGE = 1
@@ -27,8 +27,8 @@ class Server:
 
         # Barrier to synchronize clients
         self._barrier = Barrier(expected_clients)
-        self._lock = Lock()
-
+        self._lock = Lock()  
+        self._client_processes = []
 
         signal.signal(signal.SIGTERM, self.shutdown)
 
@@ -45,6 +45,7 @@ class Server:
                     logging.info("action: CREATING NEW PROCESS | result: success")
                     client_process = Process(target=self.__handle_client, args=(client_sock,))
                     client_process.start()
+                    self._client_processes.append(client_process)
             except socket.timeout:
                 continue
             except OSError:
@@ -52,6 +53,9 @@ class Server:
 
         logging.info("action: sorteo | result: success")
         
+        for process in self._client_processes:
+            process.join()
+
         try:
             self.__send_winners()
         except OSError as e:
@@ -82,32 +86,26 @@ class Server:
             if not keep_open:
                 client_sock.close()
 
-    def __get_message_type(self, client_sock):
-        return read_exact(client_sock, 1)[0]
-
     def __handle_bets_message(self, client_sock):
-        """
-        Read message from a specific client socket and closes the socket
-
-        If a problem arises in the communication with the client, the
-        client socket will also be closed
-        """
         try:
             bets = deserialize_bet_batch(client_sock)
             bets_quantity = len(bets)
             addr = client_sock.getpeername()
             logging.info(f'action: receive_message | result: success | ip: {addr[0]}')
+
             self.__store_bets_secure(bets, self._lock)
+
             logging.info(f'action: apuesta_recibida | result: success | cantidad: {bets_quantity}')
             confirmation = struct.pack('>B', 1)
             write_exact(client_sock, confirmation)
         except OSError as e:
             logging.error(f"action: receive_message | result: fail | error: {e}")
 
+    def __store_bets_secure(self, bets, lock):
+        with lock:
+            store_bets(bets)
+
     def __handle_winners_request_message(self, client_sock):
-        """
-        Handle the winners request and add the client to the waiting list
-        """
         try:
             agency = read_exact(client_sock, 1)[0]
             self._waiting_clients[agency] = client_sock
@@ -115,17 +113,7 @@ class Server:
         except OSError as e:
             raise e
 
-    def __store_bets_secure(self, bets, lock):
-        with lock:
-            store_bets(bets)
-
     def __accept_new_connection(self):
-        """
-        Accept new connections
-
-        This function blocks until a connection to a client is made.
-        When a connection is made, it returns the created connection.
-        """
         logging.info('action: accept_connections | result: in_progress')
         c, addr = self._server_socket.accept()
         logging.info(f'action: accept_connections | result: success | ip: {addr[0]}')
@@ -152,6 +140,13 @@ class Server:
         agency_socket.close()
 
     def shutdown(self, signum, frame):
+        logging.info("action: shutdown | result: in_progress")
+
         self._running = False
+
+        for process in self._client_processes:
+            process.join()
+
         self._server_socket.close()
+
         logging.info('action: exit | result: success')
