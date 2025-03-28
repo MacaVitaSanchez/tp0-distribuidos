@@ -420,3 +420,25 @@ Si se desea expandir el número de agencias, primero se debe ejecutar el siguien
 ```bash
 ./generar-compose.sh docker-compose-dev.yaml 5
 ```
+
+# Correcciones
+
+## Lock con store_bet
+
+Se implementó el uso de Locks en `__store_bets_secure` para evitar condiciones de carrera, asegurando que solo un proceso a la vez ejecute `store_bets` y, por tanto, protegiendo la integridad del archivo.
+
+## Graceful Shutdown
+
+Se realizaron modificaciones para permitir una terminación ordenada del sistema ante señales SIGTERM, incluso cuando los procesos están en barreras de sincronización.
+
+### Servidor
+
+- Implementación de un evento de shutdown compartido entre procesos
+- Modificación del método shutdown() para abortar la barrera y establecer un timeout de 1 segundo
+- Omisión de la barrera cuando el servidor está en proceso de cierre
+
+### Cliente
+
+- Implementación de un canal para señalizar el shutdown a todas las goroutines
+- Agregado de timeouts a las conexiones para evitar bloqueos indefinidos
+- Verificación del estado de shutdown antes de iniciar operaciones críticas
