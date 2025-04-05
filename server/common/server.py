@@ -16,7 +16,6 @@ class Server:
         self._server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self._server_socket.bind(('', port))
         self._server_socket.listen(listen_backlog)
-        self._server_socket.settimeout(1)
         self._running = True
         self._expected_clients = expected_clients
         self._waiting_clients = {}
@@ -37,8 +36,8 @@ class Server:
         Main Server loop: Accept new connections and establish communication with a client.
         After all clients have communicated, the server sends the results to all clients.
         """
-
-        while self._running and len(self._waiting_clients) < self._expected_clients:
+        agencies = 0
+        while agencies < self._expected_clients:
             try:
                 client_sock = self.__accept_new_connection()
                 if client_sock:
@@ -46,8 +45,7 @@ class Server:
                     client_process = Process(target=self.__handle_client, args=(client_sock,))
                     client_process.start()
                     self._client_processes.append(client_process)
-            except socket.timeout:
-                continue
+                    agencies += 1
             except OSError:
                 break
 
