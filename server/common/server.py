@@ -59,6 +59,8 @@ class Server:
                 self.__send_winners()
             except OSError as e:
                 logging.error(f"action: run_server | result: fail | error: {e}")
+            self._server_socket.close()
+            logging.info('action: exit | result: success')
 
     def __handle_client(self, client_sock):
         keep_open = False
@@ -165,7 +167,8 @@ class Server:
                 logging.warning(f'action: shutdown_notify_client | agency: {agency} | result: fail | error: {e}')
 
         for process in self._client_processes:
-            process.join()
+            if process.is_alive():
+                process.join()
 
         self._server_socket.close()
         logging.info('action: exit | result: success')
