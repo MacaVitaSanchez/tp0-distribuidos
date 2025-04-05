@@ -4,8 +4,8 @@ import signal
 from common.utils import *
 from common.socket_utils import *
 import struct
-from multiprocessing import Process, Manager, Barrier, Lock, Event
-
+from multiprocessing import Process, Manager, Barrier, Lock
+from threading import BrokenBarrierError
 
 BETS_MESSAGE = 1
 WINNERS_REQUEST_MESSAGE = 2
@@ -72,9 +72,16 @@ class Server:
                 if message_type == BETS_MESSAGE:
                     self.__handle_bets_message(client_sock)
                 elif message_type == WINNERS_REQUEST_MESSAGE:
-                    self.__handle_winners_request_message(client_sock)
+                    agency = self.__handle_winners_request_message(client_sock)
                     keep_open = True
-                    self._barrier.wait()
+                    logging.info(f"action: barrier_wait | agency: {agency} | clients_waiting: {len(self._waiting_clients)}")
+                    try:
+                        self._barrier.wait()
+                    except BrokenBarrierError:
+                        logging.warning(f"action: barrier_broken | agency: {agency} | result: shutdown_in_progress")
+                        write_exact(client_sock, struct.pack('>B', SERVER_SHUTDOWN_MESSAGE))
+                        client_sock.close()
+                        return
                     break
                 else:
                     logging.warning("action: unknown_message_type")
@@ -119,9 +126,7 @@ class Server:
         return c
 
     def __send_winners(self):
-        winners = {}
-        for i in range(1, self._expected_clients + 1):
-            winners[i] = []
+        winners = {i: [] for i in range(1, self._expected_clients + 1)}
         for bet in load_bets():
             if has_won(bet):
                 winners[bet.agency].append(bet)
@@ -129,18 +134,25 @@ class Server:
             self.__send_winners_to_agency(socket, winners[agency])
 
     def __send_winners_to_agency(self, agency_socket, bets):
-        length = len(bets)
-        agency_socket.send(struct.pack('>H', length))
-
-        for bet in bets:
-            document = bet.document.encode('utf8')
-            write_exact(agency_socket, document)
-
-        agency_socket.close()
+        try:
+            agency_socket.send(struct.pack('>H', len(bets)))
+            for bet in bets:
+                document = bet.document.encode('utf8')
+                write_exact(agency_socket, document)
+        except Exception as e:
+            logging.error(f"action: send_winners_to_agency | result: fail | error: {e}")
+        finally:
+            agency_socket.close()
 
     def shutdown(self, signum, frame):
         logging.info("action: shutdown | result: in_progress")
         self._running = False
+
+        try:
+            self._barrier.abort()
+            logging.info("action: barrier_abort | result: success")
+        except Exception as e:
+            logging.warning(f"action: barrier_abort | result: fail | error: {e}")
 
         for agency, sock in self._waiting_clients.items():
             try:
