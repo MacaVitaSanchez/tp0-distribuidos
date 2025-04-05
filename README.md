@@ -420,3 +420,30 @@ Si se desea expandir el número de agencias, primero se debe ejecutar el siguien
 ```bash
 ./generar-compose.sh docker-compose-dev.yaml 5
 ```
+
+
+## Correcciones
+
+### 🔧 Cambios en el Servidor
+
+#### Shutdown Controlado
+
+- Al recibir una señal `SIGTERM`, el servidor:
+  - Aborta la barrera (rompe la sincronización).
+  - Envía un mensaje (`SERVER_SHUTDOWN_MESSAGE = 255`) a cada cliente conectado.
+  - Cierra todas las conexiones activas y espera la terminación de los procesos hijos.
+
+### Remoción de busy wait
+
+- Se eliminaron todos los timeout presentes en el servidor para así no tener busy waits.
+- Para evitar el uso de timeouts en la barrera, se utilizó una rutina la cual ejecuta la funcion shutdown que rompe la barrera para liberar a los procesos hijos, notifica a los clientes sobre esto, cierra los sockets y espera a que terminen los procesos.
+
+### Cambios en el Cliente
+
+#### Graceful Shutdown
+
+- El cliente escucha señales `SIGTERM` y finaliza la ejecución cerrando el socket limpiamente mediante un `quitChan`.
+
+#### Detección de Apagado del Servidor
+
+- Si el cliente recibe el byte SERVER_SHUTDOWN_MESSAGE = 255, interpreta que el servidor está en proceso de apagado, lo loguea y finaliza la conexión sin error.

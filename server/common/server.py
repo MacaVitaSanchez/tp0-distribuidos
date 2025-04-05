@@ -102,7 +102,7 @@ class Server:
             self.__store_bets_secure(bets, self._lock)
 
             logging.info(f'action: apuesta_recibida | result: success | cantidad: {bets_quantity}')
-            confirmation = struct.pack('>B', 1)
+            confirmation = struct.pack('>B', BETS_MESSAGE)
             write_exact(client_sock, confirmation)
         except OSError as e:
             logging.error(f"action: receive_message | result: fail | error: {e}")
@@ -135,6 +135,7 @@ class Server:
 
     def __send_winners_to_agency(self, agency_socket, bets):
         try:
+            agency_socket.send(struct.pack('>B', WINNERS_REQUEST_MESSAGE))
             agency_socket.send(struct.pack('>H', len(bets)))
             for bet in bets:
                 document = bet.document.encode('utf8')
