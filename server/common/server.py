@@ -18,6 +18,7 @@ class Server:
         self._server_socket.bind(('', port))
         self._server_socket.listen(listen_backlog)
         self._running = True
+        self._shutdown_signal = False
         self._expected_clients = expected_clients
         self._waiting_clients = {}
 
@@ -37,8 +38,7 @@ class Server:
         Main Server loop: Accept new connections and establish communication with a client.
         After all clients have communicated, the server sends the results to all clients.
         """
-        agencies = 0
-        while agencies < self._expected_clients:
+        while self._running and len(self._client_processes) < self._expected_clients:
             try:
                 client_sock = self.__accept_new_connection()
                 if client_sock:
@@ -46,19 +46,19 @@ class Server:
                     client_process = Process(target=self.__handle_client, args=(client_sock,))
                     client_process.start()
                     self._client_processes.append(client_process)
-                    agencies += 1
             except OSError:
                 break
 
-        logging.info("action: sorteo | result: success")
+        if not self._shutdown_signal:
+            logging.info("action: sorteo | result: success")
         
-        for process in self._client_processes:
-            process.join()
+            for process in self._client_processes:
+                process.join()
 
-        try:
-            self.__send_winners()
-        except OSError as e:
-            logging.error(f"action: run_server | result: fail | error: {e}")
+            try:
+                self.__send_winners()
+            except OSError as e:
+                logging.error(f"action: run_server | result: fail | error: {e}")
 
     def __handle_client(self, client_sock):
         keep_open = False
@@ -148,6 +148,7 @@ class Server:
     def shutdown(self, signum, frame):
         logging.info("action: shutdown | result: in_progress")
         self._running = False
+        self._shutdown_signal = True
 
         try:
             self._barrier.abort()
