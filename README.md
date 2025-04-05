@@ -424,26 +424,30 @@ Si se desea expandir el número de agencias, primero se debe ejecutar el siguien
 
 ## Correcciones
 
-### 🔧 Cambios en el Servidor
+### Cambios en el Servidor
 
 #### Shutdown Controlado
 
-- Al recibir una señal `SIGTERM`, el servidor:
-  - Aborta la barrera (rompe la sincronización).
-  - Envía un mensaje (`SERVER_SHUTDOWN_MESSAGE = 255`) a cada cliente conectado.
-  - Cierra todas las conexiones activas y espera la terminación de los procesos hijos.
+- Al recibir una señal `SIGTERM`, el servidor ejecuta una rutina de apagado ordenado:
+  - Aborta la barrera (`Barrier.abort()`), liberando a todos los procesos hijos bloqueados.
+  - Envía un mensaje (`SERVER_SHUTDOWN_MESSAGE = 255`) a cada cliente conectado que solicitó resultados.
+  - Cierra todos los sockets abiertos y espera la finalización de los procesos hijos mediante `join()`.
 
-### Remoción de busy wait
+#### Eliminación de Busy Wait
 
-- Se eliminaron todos los timeout presentes en el servidor para así no tener busy waits.
-- Para evitar el uso de timeouts en la barrera, se utilizó una rutina la cual ejecuta la funcion shutdown que rompe la barrera para liberar a los procesos hijos, notifica a los clientes sobre esto, cierra los sockets y espera a que terminen los procesos.
+- Se eliminaron todos los timeouts utilizados previamente para sondear el estado del servidor.
+- El servidor ahora utiliza primitivas bloqueantes correctamente (`accept()`, `barrier.wait()`), sin recurrir a ciclos de espera activa (busy waiting).
+- La interrupción de la espera en la barrera se realiza mediante `barrier.abort()` desde el manejador de señales, lo que evita el uso de timeouts.
 
 ### Cambios en el Cliente
 
 #### Graceful Shutdown
 
-- El cliente escucha señales `SIGTERM` y finaliza la ejecución cerrando el socket limpiamente mediante un `quitChan`.
+- El cliente maneja señales `SIGTERM` mediante un canal `quitChan`.
+- Al recibir la señal, el cliente finaliza su ejecución de forma ordenada, cerrando su conexión y evitando errores abruptos.
 
-#### Detección de Apagado del Servidor
+#### Detección del Apagado del Servidor
 
-- Si el cliente recibe el byte SERVER_SHUTDOWN_MESSAGE = 255, interpreta que el servidor está en proceso de apagado, lo loguea y finaliza la conexión sin error.
+- Si el cliente recibe el byte `255` (`SERVER_SHUTDOWN_MESSAGE`) en cualquier momento de la comunicación, lo interpreta como un apagado del servidor:
+  - Registra el evento en el log.
+  - Finaliza la ejecución de forma segura, sin generar errores ni dejar sockets abiertos.
