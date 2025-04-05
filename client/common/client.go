@@ -139,8 +139,6 @@ func (c *Client) CreateBetsFromCSV(pathBets string, agencia int) ([][]*protocol.
 	return betBatches, nil
 }
 
-
-// StartClientLoop Send messages to the client until some time threshold is met
 func (c *Client) SendBet(pathBets string) bool {
 	agenciaID, _ := strconv.Atoi(c.config.ID)
 	batches, err := c.CreateBetsFromCSV(pathBets, agenciaID)
@@ -192,18 +190,32 @@ func (c *Client) SendBet(pathBets string) bool {
 func (c *Client) GetWinners(agencia int) {
 	defer c.conn.Close()
 
-	request := RequestWinners{
-		Agency: agencia,
-	}
-
-	serializedRequest := request.ToBytes()
-	err := writeExact(c.conn, serializedRequest)
-	if err != nil {
+	if err := c.sendWinnersRequest(agencia); err != nil {
 		log.Errorf("action: serialize_request | result: fail | error %v", err)
 		return
 	}
 
-	// Canal de resultado y error
+	resultChan, errorChan := c.readResponseAsync()
+
+	select {
+	case <-c.quitChan:
+		log.Infof("action: shutdown_signal_received | result: aborting winners request | client_id: %v", c.config.ID)
+		return
+	case err := <-errorChan:
+		log.Errorf("action: read_response | result: fail | error: %v", err)
+		return
+	case firstByte := <-resultChan:
+		c.handleWinnersResponse(firstByte)
+	}
+}
+
+func (c *Client) sendWinnersRequest(agencia int) error {
+	request := RequestWinners{Agency: agencia}
+	serializedRequest := request.ToBytes()
+	return writeExact(c.conn, serializedRequest)
+}
+
+func (c *Client) readResponseAsync() (<-chan []byte, <-chan error) {
 	resultChan := make(chan []byte, 1)
 	errorChan := make(chan error, 1)
 
@@ -216,25 +228,20 @@ func (c *Client) GetWinners(agencia int) {
 		resultChan <- resp
 	}()
 
-	select {
-	case <-c.quitChan:
-		log.Infof("action: shutdown_signal_received | result: aborting winners request | client_id: %v", c.config.ID)
-		return
-	case err := <-errorChan:
-		log.Errorf("action: read_response | result: fail | error: %v", err)
-		return
-	case firstByte := <-resultChan:
-		if firstByte[0] == serverShutdownMessage {
-			log.Infof("action: server_shutdown | result: detected | client_id: %v", c.config.ID)
-			return
-		}
+	return resultChan, errorChan
+}
 
-		winners, err := DeserializeWinners(c.conn)
-		if err != nil {
-			log.Errorf("action: consulta_ganadores | result: fail | error %v", err)
-			return
-		}
+func (c *Client) handleWinnersResponse(firstByte []byte) {
+	if firstByte[0] == serverShutdownMessage {
+		log.Infof("action: server_shutdown | result: detected | client_id: %v", c.config.ID)
+		return
+	}
 
-		log.Infof("action: consulta_ganadores | result: success | cant_ganadores: %d", len(winners.Dnis))
-    }
+	winners, err := DeserializeWinners(c.conn)
+	if err != nil {
+		log.Errorf("action: consulta_ganadores | result: fail | error %v", err)
+		return
+	}
+
+	log.Infof("action: consulta_ganadores | result: success | cant_ganadores: %d", len(winners.Dnis))
 }
