@@ -16,6 +16,8 @@ import (
 
 var log = logging.MustGetLogger("log")
 
+const serverShutdownMessage = 255
+
 // ClientConfig Configuration used by the client
 type ClientConfig struct {
 	ID            string
@@ -57,17 +59,17 @@ func NewClient(config ClientConfig) *Client {
 // CreateClientSocket initializes the client socket. In case of failure,
 // it retries a number of times before returning an error.
 func (c *Client) createClientSocket() error {
-    var conn net.Conn
-    var err error
-    maxRetries := 5
-    retryDelay := 2 * time.Second
+	var conn net.Conn
+	var err error
+	maxRetries := 5
+	retryDelay := 2 * time.Second
 
-    for i := 0; i < maxRetries; i++ {
-        conn, err = net.Dial("tcp", c.config.ServerAddress)
-        if err == nil {
-            c.conn = conn
-            return nil
-        }
+	for i := 0; i < maxRetries; i++ {
+		conn, err = net.Dial("tcp", c.config.ServerAddress)
+		if err == nil {
+			c.conn = conn
+			return nil
+		}
 
         log.Infof(
 			"action: connect | result: in_progress | client_id: %v | error: %v",
@@ -75,9 +77,9 @@ func (c *Client) createClientSocket() error {
 			err,
 		)
 
-        time.Sleep(retryDelay)
-    }
-    
+		time.Sleep(retryDelay)
+	}
+
 	log.Criticalf(
 		"action: connect | result: in_progress | client_id: %v | error: %v",
 		c.config.ID,
@@ -88,31 +90,31 @@ func (c *Client) createClientSocket() error {
 
 
 func (c *Client) CreateBetsFromCSV(pathBets string, agencia int) ([][]*protocol.Bet, error) {
-    file, err := os.Open(pathBets)
-    if err != nil {
-        log.Errorf("action: open_file | result: fail | client_id: %v | error: %v", c.config.ID, err)
-        return nil, err
-    }
-    defer file.Close()
+	file, err := os.Open(pathBets)
+	if err != nil {
+		log.Errorf("action: open_file | result: fail | client_id: %v | error: %v", c.config.ID, err)
+		return nil, err
+	}
+	defer file.Close()
 
-    reader := csv.NewReader(file)
-    var allBets []*protocol.Bet
+	reader := csv.NewReader(file)
+	var allBets []*protocol.Bet
 
-    for {
-        line, err := reader.Read()
-        if err == io.EOF {
-            break
-        }
-        if err != nil {
-            log.Errorf("action: read_bet | result: fail | client_id: %v | error: %v", c.config.ID, err)
-            return nil, err
-        }
+	for {
+		line, err := reader.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			log.Errorf("action: read_bet | result: fail | client_id: %v | error: %v", c.config.ID, err)
+			return nil, err
+		}
 
-        if len(line) != 5 {
-            log.Errorf("action: read_bet | result: fail | client_id: %v | error: Insufficient data on line", c.config.ID)
-            continue
-        }
-        numeroApostado, _ := strconv.Atoi(line[4])
+		if len(line) != 5 {
+			log.Errorf("action: read_bet | result: fail | client_id: %v | error: Insufficient data on line", c.config.ID)
+			continue
+		}
+		numeroApostado, _ := strconv.Atoi(line[4])
         bet := protocol.NewBet(
             agencia,
             line[0],
@@ -122,64 +124,69 @@ func (c *Client) CreateBetsFromCSV(pathBets string, agencia int) ([][]*protocol.
             numeroApostado, 
         )
 
-        allBets = append(allBets, bet)
-    }
+		allBets = append(allBets, bet)
+	}
 
-    var betBatches [][]*protocol.Bet
-    for i := 0; i < len(allBets); i += c.config.BatchSize {
-        end := i + c.config.BatchSize
-        if end > len(allBets) {
-            end = len(allBets)
-        }
-        betBatches = append(betBatches, allBets[i:end])
-    }
+	var betBatches [][]*protocol.Bet
+	for i := 0; i < len(allBets); i += c.config.BatchSize {
+		end := i + c.config.BatchSize
+		if end > len(allBets) {
+			end = len(allBets)
+		}
+		betBatches = append(betBatches, allBets[i:end])
+	}
 
-    return betBatches, nil
+	return betBatches, nil
 }
 
 
 // StartClientLoop Send messages to the client until some time threshold is met
 func (c *Client) SendBet(pathBets string) bool {
-    agenciaID, _ := strconv.Atoi(c.config.ID)
-    batches, err := c.CreateBetsFromCSV(pathBets, agenciaID)
-    if err != nil {
-        return false
-    }
+	agenciaID, _ := strconv.Atoi(c.config.ID)
+	batches, err := c.CreateBetsFromCSV(pathBets, agenciaID)
+	if err != nil {
+		return false
+	}
 	c.createClientSocket()
-    for _, batch := range batches {
-        message := protocol.SerializeBetBatch(batch)
-        select {
-        case <-c.quitChan:
-            return false
-        default:
+	for _, batch := range batches {
+		message := protocol.SerializeBetBatch(batch)
+		select {
+		case <-c.quitChan:
+			return false
+		default:
         
-            err := writeExact(c.conn, message)
-            if err != nil {
+			err := writeExact(c.conn, message)
+			if err != nil {
                 log.Errorf("action: apuesta_enviada | result: fail | client_id: %v | error: %v",
                     c.config.ID,
                     err)
-                return false
-            }
+				return false
+			}
 
-            confirmation, err := readExact(c.conn, 1)
-            if err != nil {
+			confirmation, err := readExact(c.conn, 1)
+			if err != nil {
                 log.Errorf("action: read_confirmation | result: fail | client_id: %v | error: %v",
-                    c.config.ID,
-                    err)
+                c.config.ID,
+                err)				
                 return false
-            }
+			}
+
+			if confirmation[0] == serverShutdownMessage {
+				log.Warningf("action: server_shutdown | result: detected | client_id: %v", c.config.ID)
+				return false
+			}
 
 			if confirmation[0] == 1 {
-                log.Infof("action: apuesta_enviada | result: success | batch_size: %v", len(batch))
-            } else {
-                log.Infof("action: apuesta_enviada | result: fail | batch_size: %v", len(batch))
-                return false
-            }
-        }
-		
+				log.Infof("action: apuesta_enviada | result: success | batch_size: %v", len(batch))
+			} else {
+				log.Infof("action: apuesta_enviada | result: fail | batch_size: %v", len(batch))
+				return false
+			}
+		}
+    
     }
 	time.Sleep(1 * time.Second) // sleep para que el servidor pueda imprimir todas las validaciones en el logger
-    return true
+	return true
 }
 
 func (c *Client) GetWinners(agencia int) {
@@ -193,6 +200,17 @@ func (c *Client) GetWinners(agencia int) {
 	err := writeExact(c.conn, serializedRequest)
 	if err != nil {
 		log.Errorf("action: serialize_request | result: fail | error %v", err)
+		return
+	}
+
+	firstByte, err := readExact(c.conn, 1)
+	if err != nil {
+		log.Errorf("action: read_response | result: fail | error: %v", err)
+		return
+	}
+
+	if firstByte[0] == serverShutdownMessage {
+		log.Warningf("action: server_shutdown | result: detected | client_id: %v", c.config.ID)
 		return
 	}
 

@@ -9,6 +9,7 @@ from multiprocessing import Process, Manager, Barrier, Lock, Event
 
 BETS_MESSAGE = 1
 WINNERS_REQUEST_MESSAGE = 2
+SERVER_SHUTDOWN_MESSAGE = 255
 
 class Server:
     def __init__(self, port, listen_backlog, expected_clients):
@@ -139,12 +140,18 @@ class Server:
 
     def shutdown(self, signum, frame):
         logging.info("action: shutdown | result: in_progress")
-
         self._running = False
+
+        for agency, sock in self._waiting_clients.items():
+            try:
+                logging.info(f"action: shutdown_notify | agency: {agency} | result: sending shutdown message")
+                write_exact(sock, struct.pack('>B', SERVER_SHUTDOWN_MESSAGE))
+                sock.close()
+            except Exception as e:
+                logging.warning(f'action: shutdown_notify_client | agency: {agency} | result: fail | error: {e}')
 
         for process in self._client_processes:
             process.join()
 
         self._server_socket.close()
-
         logging.info('action: exit | result: success')
