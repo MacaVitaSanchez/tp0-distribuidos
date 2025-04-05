@@ -74,11 +74,11 @@ class Server:
                 elif message_type == WINNERS_REQUEST_MESSAGE:
                     agency = self.__handle_winners_request_message(client_sock)
                     keep_open = True
-                    logging.info(f"action: barrier_wait | agency: {agency} | clients_waiting: {len(self._waiting_clients)}")
+                    logging.info(f"action: barrier_wait | result: success | agency: {agency} | clients_waiting: {len(self._waiting_clients)}")
                     try:
                         self._barrier.wait()
                     except BrokenBarrierError:
-                        logging.warning(f"action: barrier_broken | agency: {agency} | result: shutdown_in_progress")
+                        logging.warning(f"action: barrier_broken | result: in_progress | agency: {agency}")
                         write_exact(client_sock, struct.pack('>B', SERVER_SHUTDOWN_MESSAGE))
                         client_sock.close()
                         return

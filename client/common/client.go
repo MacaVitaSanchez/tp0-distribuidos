@@ -172,7 +172,7 @@ func (c *Client) SendBet(pathBets string) bool {
 			}
 
 			if confirmation[0] == serverShutdownMessage {
-				log.Warningf("action: server_shutdown | result: detected | client_id: %v", c.config.ID)
+				log.Infof("action: server_shutdown | result: detected | client_id: %v", c.config.ID)
 				return false
 			}
 
@@ -203,22 +203,38 @@ func (c *Client) GetWinners(agencia int) {
 		return
 	}
 
-	firstByte, err := readExact(c.conn, 1)
-	if err != nil {
+	// Canal de resultado y error
+	resultChan := make(chan []byte, 1)
+	errorChan := make(chan error, 1)
+
+	go func() {
+		resp, err := readExact(c.conn, 1)
+		if err != nil {
+			errorChan <- err
+			return
+		}
+		resultChan <- resp
+	}()
+
+	select {
+	case <-c.quitChan:
+		log.Infof("action: shutdown_signal_received | result: aborting winners request | client_id: %v", c.config.ID)
+		return
+	case err := <-errorChan:
 		log.Errorf("action: read_response | result: fail | error: %v", err)
 		return
-	}
+	case firstByte := <-resultChan:
+		if firstByte[0] == serverShutdownMessage {
+			log.Infof("action: server_shutdown | result: detected | client_id: %v", c.config.ID)
+			return
+		}
 
-	if firstByte[0] == serverShutdownMessage {
-		log.Warningf("action: server_shutdown | result: detected | client_id: %v", c.config.ID)
-		return
-	}
+		winners, err := DeserializeWinners(c.conn)
+		if err != nil {
+			log.Errorf("action: consulta_ganadores | result: fail | error %v", err)
+			return
+		}
 
-	winners, err := DeserializeWinners(c.conn)
-	if err != nil {
-		log.Errorf("action: consulta_ganadores | result: fail | error %v", err)
-		return
-	}
-
-	log.Infof("action: consulta_ganadores | result: success | cant_ganadores: %d", len(winners.Dnis))
+		log.Infof("action: consulta_ganadores | result: success | cant_ganadores: %d", len(winners.Dnis))
+    }
 }
